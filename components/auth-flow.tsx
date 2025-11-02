@@ -98,16 +98,18 @@ export function AuthFlow() {
       if (authError) throw authError
       if (!authData.user) throw new Error("No user data returned")
 
-      // Step 2: Create profile (this will be done in onboarding, but create basic one)
-      const { error: profileError } = await supabase
-        .from('profiles')
+      // Step 2: Create user profile in users table
+      const { error: userError } = await supabase
+        .from('users')  // ✅ Changed from 'profiles' to 'users'
         .insert({
           id: authData.user.id,
+          email: signupEmail,
+          full_name: signupFullName,
         })
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError)
-        // Don't throw - profile will be completed in onboarding
+      if (userError) {
+        console.error('User creation error:', userError)
+        // Don't throw - user will complete profile in onboarding
       }
 
       toast({

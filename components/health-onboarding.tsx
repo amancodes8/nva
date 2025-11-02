@@ -47,7 +47,7 @@ const DIETARY_RESTRICTIONS = [
 
 export function HealthOnboarding() {
   const router = useRouter()
-  const { toast } = useToast() // ✅ moved here — inside component
+  const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
@@ -86,22 +86,72 @@ const handleNext = async () => {
         return
       }
 
-      // Update profile with onboarding data
+      // ✅ Update users table (changed from profiles)
       const { error } = await supabase
-        .from('profiles')
+        .from('users')  // Changed from 'profiles' to 'users'
         .update({
           age: parseInt(formData.age) || null,
           gender: formData.gender || null,
           activity_level: formData.activityLevel || null,
-          primary_goal: formData.healthGoals[0] || 'General Wellness',
-          medical_conditions: formData.medicalConditions || [],
-          dietary_restrictions: formData.dietaryRestrictions || [],
-          food_allergies: formData.allergies || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id)
 
       if (error) throw error
+
+      // ✅ Insert medical conditions if any
+      if (formData.medicalConditions.length > 0 && !formData.medicalConditions.includes('None of the above')) {
+        const conditionsToInsert = formData.medicalConditions.map(condition => ({
+          user_id: user.id,
+          condition_name: condition,
+          severity: 'Moderate', // Default value
+        }))
+
+        const { error: conditionsError } = await supabase
+          .from('medical_conditions')
+          .insert(conditionsToInsert)
+
+        if (conditionsError) {
+          console.error('Medical conditions error:', conditionsError)
+          // Continue anyway - not critical
+        }
+      }
+
+      // ✅ Insert dietary restrictions if any
+      if (formData.dietaryRestrictions.length > 0 && !formData.dietaryRestrictions.includes('None')) {
+        const restrictionsToInsert = formData.dietaryRestrictions.map(restriction => ({
+          user_id: user.id,
+          restriction: restriction,
+        }))
+
+        const { error: restrictionsError } = await supabase
+          .from('dietary_restrictions')
+          .insert(restrictionsToInsert)
+
+        if (restrictionsError) {
+          console.error('Dietary restrictions error:', restrictionsError)
+          // Continue anyway - not critical
+        }
+      }
+
+      // ✅ Insert food allergies if provided
+      if (formData.allergies.trim()) {
+        const allergies = formData.allergies.split(',').map(a => a.trim()).filter(a => a)
+        const allergiesToInsert = allergies.map(allergen => ({
+          user_id: user.id,
+          allergen: allergen,
+          severity: 'Unknown',
+        }))
+
+        const { error: allergiesError } = await supabase
+          .from('food_allergies')
+          .insert(allergiesToInsert)
+
+        if (allergiesError) {
+          console.error('Food allergies error:', allergiesError)
+          // Continue anyway - not critical
+        }
+      }
 
       toast({
         title: "Profile Complete!",
@@ -418,9 +468,10 @@ const handleNext = async () => {
           </Button>
           <Button
             onClick={handleNext}
+            disabled={isLoading}
             className="bg-medical-blue hover:bg-medical-blue/90"
           >
-            {currentStep === totalSteps ? 'Complete Setup' : 'Next'}
+            {isLoading ? 'Saving...' : currentStep === totalSteps ? 'Complete Setup' : 'Next'}
             {currentStep < totalSteps && <ArrowRight className="h-4 w-4 ml-2" />}
           </Button>
         </div>
