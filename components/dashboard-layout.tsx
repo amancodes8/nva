@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Home, User, Settings, Heart, AlertTriangle, Bell, LogOut } from "lucide-react"
+import { Menu, Home, User, Settings, Heart, AlertTriangle, Bell, LogOut, Zap } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +32,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { logout, user } = useAuth()
   const { toast } = useToast()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
 
   const handleLogout = async () => {
     try {
@@ -49,6 +50,23 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       })
     }
   }
+
+  const notifications = [
+    {
+      id: 1,
+      type: "alert",
+      title: "High Sodium Intake",
+      message: "You've consumed 2,800mg of sodium today. Try to stay under 2,300mg for your hypertension.",
+      time: "2 hours ago",
+    },
+    {
+      id: 2,
+      type: "success",
+      title: "Goal Achievement",
+      message: "Great job! You stayed within your carb limit today.",
+      time: "4 hours ago",
+    },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -127,10 +145,56 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </nav>
 
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" className="relative">
-                <Bell className="h-5 w-5" />
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs bg-red-500">2</Badge>
-              </Button>
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="relative"
+                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                >
+                  <Bell className="h-5 w-5" />
+                  <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs bg-red-500">
+                    {notifications.length}
+                  </Badge>
+                </Button>
+
+                {/* Notifications Popup */}
+                {notificationsOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length > 0 ? (
+                        notifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className="p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                          >
+                            <div className="flex items-start space-x-3">
+                              {notification.type === "alert" ? (
+                                <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <Zap className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div className="flex-1">
+                                <p className="font-medium text-sm text-gray-900 dark:text-white">
+                                  {notification.title}
+                                </p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{notification.message}</p>
+                                <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-sm text-gray-500">No notifications</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="rounded-full">

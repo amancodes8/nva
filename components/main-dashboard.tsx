@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useAuth } from "@/components/auth-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -13,6 +14,7 @@ import { MedicalConditionAlerts } from "@/components/medical-condition-alerts"
 import { MealSuggestions } from "@/components/meal-suggestions"
 
 export function MainDashboard() {
+  const { user } = useAuth()
   const [todayCalories] = useState(1450)
   const [calorieGoal] = useState(2000)
   const [waterIntake] = useState(6)
@@ -40,6 +42,16 @@ export function MainDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-medical-blue/10 to-medical-blue/5 rounded-lg p-6 border border-medical-blue/20">
+        <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+          Welcome back, {user?.email?.split("@")[0] || "User"}!
+        </h2>
+        <p className="text-gray-600 dark:text-gray-300 mt-2">
+          Here's your nutrition summary for today. Keep up the great work!
+        </p>
+      </div>
+
       {/* Health Alerts Section */}
       {healthAlerts.length > 0 && (
         <div className="space-y-4">

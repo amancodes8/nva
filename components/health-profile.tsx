@@ -1,75 +1,183 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Heart, AlertTriangle, User, Phone, Edit, X, Save, Loader2 } from "lucide-react"
+import { Heart, AlertTriangle, User, Edit, X, Save, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/components/auth-provider"
+import { supabase } from "@/lib/supabase"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+const MEDICAL_CONDITIONS = [
+  "Diabetes Type 1",
+  "Diabetes Type 2",
+  "Hypertension",
+  "Heart Disease",
+  "Kidney Disease",
+  "High Cholesterol",
+  "Food Allergies",
+  "Celiac Disease",
+  "Irritable Bowel Syndrome",
+  "Gastroesophageal Reflux Disease",
+  "Osteoporosis",
+  "Anemia",
+  "Thyroid Disorders",
+  "None of the above",
+]
+
+const DIETARY_RESTRICTIONS = [
+  "Vegetarian",
+  "Vegan",
+  "Gluten-Free",
+  "Dairy-Free",
+  "Nut-Free",
+  "Low-Sodium",
+  "Low-Carb",
+  "Keto",
+  "Mediterranean",
+  "DASH Diet",
+  "None",
+]
 
 export function HealthProfile() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const [editFormData, setEditFormData] = useState({
-    age: "45",
-    gender: "Female",
-    activityLevel: "Moderate",
-    medicalConditions: ["Type 2 Diabetes", "Hypertension"],
-    dietaryRestrictions: ["Low-Sodium"],
-    allergies: "Shellfish (severe - anaphylaxis), Tree nuts (moderate - hives, swelling)",
+    age: "",
+    gender: "",
+    activityLevel: "",
+    medicalConditions: [] as string[],
+    dietaryRestrictions: [] as string[],
+    allergies: "",
   })
 
-  const medicalConditions = [
-    {
-      name: "Type 2 Diabetes",
-      severity: "Moderate",
-      diagnosed: "2020",
-      description: "Managed with diet and medication",
-      recommendations: [
-        "Monitor carbohydrate intake",
-        "Regular blood sugar testing",
-        "Maintain consistent meal timing",
-      ],
-    },
-    {
-      name: "Hypertension",
-      severity: "Mild",
-      diagnosed: "2022",
-      description: "Well controlled with lifestyle changes",
-      recommendations: ["Limit sodium intake", "Regular exercise", "Stress management"],
-    },
-  ]
+  const [medicalConditions, setMedicalConditions] = useState<any[]>([])
+  const [medications, setMedications] = useState<any[]>([])
+  const [allergies, setAllergies] = useState<any[]>([])
 
-  const medications = [
-    { name: "Metformin", dosage: "500mg", frequency: "Twice daily", timing: "With meals" },
-    { name: "Lisinopril", dosage: "10mg", frequency: "Once daily", timing: "Morning" },
-  ]
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        if (!user) return
 
-  const allergies = [
-    { allergen: "Shellfish", severity: "Severe", reaction: "Anaphylaxis" },
-    { allergen: "Tree Nuts", severity: "Moderate", reaction: "Hives, swelling" },
-  ]
+        const response = await fetch("/api/user-profile")
+        if (response.ok) {
+          const profile = await response.json()
+          setEditFormData({
+            age: profile.age || "",
+            gender: profile.gender || "",
+            activityLevel: profile.activity_level || "",
+            medicalConditions: [],
+            dietaryRestrictions: [],
+            allergies: "",
+          })
+        }
+
+        // Fetch medical conditions
+        const { data: conditions } = await supabase.from("medical_conditions").select("*").eq("user_id", user.id)
+
+        if (conditions) {
+          setMedicalConditions(conditions)
+          setEditFormData((prev) => ({
+            ...prev,
+            medicalConditions: conditions.map((c) => c.condition_name),
+          }))
+        }
+
+        // Fetch dietary restrictions
+        const { data: restrictions } = await supabase.from("dietary_restrictions").select("*").eq("user_id", user.id)
+
+        if (restrictions) {
+          setEditFormData((prev) => ({
+            ...prev,
+            dietaryRestrictions: restrictions.map((r) => r.restriction),
+          }))
+        }
+
+        // Fetch allergies
+        const { data: allergyData } = await supabase.from("food_allergies").select("*").eq("user_id", user.id)
+
+        if (allergyData) {
+          setAllergies(allergyData)
+          setEditFormData((prev) => ({
+            ...prev,
+            allergies: allergyData.map((a) => a.allergen).join(", "),
+          }))
+        }
+      } catch (error) {
+        console.error("Error loading user data:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadUserData()
+  }, [user])
 
   const handleSaveProfile = async () => {
     setIsSaving(true)
     try {
+      if (!user) throw new Error("User not authenticated")
+
+      // Update basic user info
       const response = await fetch("/api/user-profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify({
+          age: Number.parseInt(editFormData.age),
+          gender: editFormData.gender,
+          activity_level: editFormData.activityLevel,
+        }),
       })
 
       if (!response.ok) {
         throw new Error("Failed to save profile")
+      }
+
+      // Delete and re-insert medical conditions
+      await supabase.from("medical_conditions").delete().eq("user_id", user.id)
+      for (const condition of editFormData.medicalConditions) {
+        if (condition !== "None of the above") {
+          await supabase.from("medical_conditions").insert({
+            user_id: user.id,
+            condition_name: condition,
+            severity: "Moderate",
+            diagnosed_year: new Date().getFullYear(),
+          })
+        }
+      }
+
+      // Delete and re-insert dietary restrictions
+      await supabase.from("dietary_restrictions").delete().eq("user_id", user.id)
+      for (const restriction of editFormData.dietaryRestrictions) {
+        if (restriction !== "None") {
+          await supabase.from("dietary_restrictions").insert({
+            user_id: user.id,
+            restriction: restriction,
+          })
+        }
+      }
+
+      // Delete and re-insert allergies
+      await supabase.from("food_allergies").delete().eq("user_id", user.id)
+      if (editFormData.allergies) {
+        await supabase.from("food_allergies").insert({
+          user_id: user.id,
+          allergen: editFormData.allergies,
+          severity: "Moderate",
+          reaction_description: editFormData.allergies,
+        })
       }
 
       toast({
@@ -93,6 +201,42 @@ export function HealthProfile() {
       ...prev,
       [field]: value,
     }))
+  }
+
+  const handleConditionChange = (condition: string, checked: boolean) => {
+    if (checked) {
+      setEditFormData((prev) => ({
+        ...prev,
+        medicalConditions: [...prev.medicalConditions, condition],
+      }))
+    } else {
+      setEditFormData((prev) => ({
+        ...prev,
+        medicalConditions: prev.medicalConditions.filter((c) => c !== condition),
+      }))
+    }
+  }
+
+  const handleRestrictionChange = (restriction: string, checked: boolean) => {
+    if (checked) {
+      setEditFormData((prev) => ({
+        ...prev,
+        dietaryRestrictions: [...prev.dietaryRestrictions, restriction],
+      }))
+    } else {
+      setEditFormData((prev) => ({
+        ...prev,
+        dietaryRestrictions: prev.dietaryRestrictions.filter((r) => r !== restriction),
+      }))
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-medical-blue" />
+      </div>
+    )
   }
 
   return (
@@ -138,14 +282,6 @@ export function HealthProfile() {
         )}
       </div>
 
-      {/* Emergency Alert */}
-      <Alert className="border-red-200 bg-red-50 dark:bg-red-900/20">
-        <AlertTriangle className="h-4 w-4 text-red-600" />
-        <AlertDescription className="text-red-800 dark:text-red-200">
-          <strong>Emergency Information:</strong> In case of emergency, contact Sarah Johnson at (555) 123-4567
-        </AlertDescription>
-      </Alert>
-
       {isEditing ? (
         <Card className="border-2 border-medical-blue/20">
           <CardHeader>
@@ -165,21 +301,77 @@ export function HealthProfile() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-gender">Gender</Label>
-                <Input
-                  id="edit-gender"
-                  value={editFormData.gender}
-                  onChange={(e) => handleEditChange("gender", e.target.value)}
-                />
+                <Select value={editFormData.gender} onValueChange={(value) => handleEditChange("gender", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-activity">Activity Level</Label>
-              <Input
-                id="edit-activity"
+              <Select
                 value={editFormData.activityLevel}
-                onChange={(e) => handleEditChange("activityLevel", e.target.value)}
-              />
+                onValueChange={(value) => handleEditChange("activityLevel", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select activity level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sedentary">Sedentary</SelectItem>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="moderate">Moderate</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="very-active">Very Active</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            <div className="pt-4 border-t">
+              <Label className="text-base font-medium mb-3 block">Medical Conditions</Label>
+              <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                {MEDICAL_CONDITIONS.map((condition) => (
+                  <div key={condition} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={condition}
+                      checked={editFormData.medicalConditions.includes(condition)}
+                      onChange={(e) => handleConditionChange(condition, e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor={condition} className="text-sm cursor-pointer">
+                      {condition}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <Label className="text-base font-medium mb-3 block">Dietary Restrictions</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {DIETARY_RESTRICTIONS.map((restriction) => (
+                  <div key={restriction} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={restriction}
+                      checked={editFormData.dietaryRestrictions.includes(restriction)}
+                      onChange={(e) => handleRestrictionChange(restriction, e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor={restriction} className="text-sm cursor-pointer">
+                      {restriction}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="edit-allergies">Food Allergies & Intolerances</Label>
               <Textarea
@@ -193,14 +385,13 @@ export function HealthProfile() {
         </Card>
       ) : (
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="conditions">Conditions</TabsTrigger>
-            <TabsTrigger value="medications">Medications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Basic Info</CardTitle>
@@ -226,187 +417,75 @@ export function HealthProfile() {
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Health Status</CardTitle>
+                  <CardTitle className="text-sm font-medium">Active Conditions</CardTitle>
                   <Heart className="h-4 w-4 text-red-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Overall Score</span>
-                      <Badge className="bg-green-100 text-green-800">Good</Badge>
-                    </div>
-                    <Progress value={75} className="h-2" />
-                    <p className="text-xs text-gray-500">75% - Well managed conditions</p>
-                  </div>
+                  <p className="text-2xl font-bold">{medicalConditions.length}</p>
+                  <p className="text-xs text-gray-500">Medical conditions tracked</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Emergency Contact</CardTitle>
-                  <Phone className="h-4 w-4 text-medical-blue" />
+                  <CardTitle className="text-sm font-medium">Allergies</CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium">Sarah Johnson</p>
-                    <p className="text-gray-600">Spouse</p>
-                    <p className="text-gray-600">(555) 123-4567</p>
-                  </div>
+                  <p className="text-2xl font-bold">{allergies.length}</p>
+                  <p className="text-xs text-gray-500">Food allergies logged</p>
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Active Conditions</CardTitle>
-                  <CardDescription>Current medical conditions requiring monitoring</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {medicalConditions.map((condition, index) => (
+            <Card>
+              <CardHeader>
+                <CardTitle>Active Conditions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {medicalConditions.length > 0 ? (
+                  medicalConditions.map((condition, index) => (
                     <div
                       key={index}
                       className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
                     >
                       <div>
-                        <p className="font-medium text-sm">{condition.name}</p>
-                        <p className="text-xs text-gray-600">Since {condition.diagnosed}</p>
+                        <p className="font-medium text-sm">{condition.condition_name}</p>
                       </div>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          condition.severity === "Severe"
-                            ? "bg-red-100 text-red-800"
-                            : condition.severity === "Moderate"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-green-100 text-green-800"
-                        }
-                      >
-                        {condition.severity}
-                      </Badge>
+                      <Badge variant="secondary">{condition.severity}</Badge>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Food Allergies</CardTitle>
-                  <CardDescription>Critical dietary restrictions for safety</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {allergies.map((allergy, index) => (
-                    <Alert key={index} className="border-red-200 bg-red-50 dark:bg-red-900/20">
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription>
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-medium text-red-800 dark:text-red-200">{allergy.allergen}</p>
-                            <p className="text-xs text-red-600 dark:text-red-300">{allergy.reaction}</p>
-                          </div>
-                          <Badge className="bg-red-100 text-red-800">{allergy.severity}</Badge>
-                        </div>
-                      </AlertDescription>
-                    </Alert>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No medical conditions recorded</p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="conditions" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>Medical Conditions</CardTitle>
-                <CardDescription>
-                  Detailed information about your health conditions and management strategies
-                </CardDescription>
               </CardHeader>
               <CardContent>
-                <Accordion type="single" collapsible className="w-full">
-                  {medicalConditions.map((condition, index) => (
-                    <AccordionItem key={index} value={`condition-${index}`}>
-                      <AccordionTrigger className="text-left">
-                        <div className="flex items-center justify-between w-full mr-4">
-                          <span className="font-medium">{condition.name}</span>
-                          <Badge
-                            variant="secondary"
-                            className={
-                              condition.severity === "Severe"
-                                ? "bg-red-100 text-red-800"
-                                : condition.severity === "Moderate"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-green-100 text-green-800"
-                            }
-                          >
-                            {condition.severity}
-                          </Badge>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <h4 className="font-medium text-sm mb-2">Condition Details</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{condition.description}</p>
-                            <p className="text-xs text-gray-500 mt-1">Diagnosed: {condition.diagnosed}</p>
+                {medicalConditions.length > 0 ? (
+                  <Accordion type="single" collapsible className="w-full">
+                    {medicalConditions.map((condition, index) => (
+                      <AccordionItem key={index} value={`condition-${index}`}>
+                        <AccordionTrigger>
+                          <div className="flex items-center justify-between w-full mr-4">
+                            <span className="font-medium">{condition.condition_name}</span>
                           </div>
-                          <div>
-                            <h4 className="font-medium text-sm mb-2">Dietary Recommendations</h4>
-                            <ul className="space-y-1">
-                              {condition.recommendations.map((rec, recIndex) => (
-                                <li
-                                  key={recIndex}
-                                  className="text-sm text-gray-600 dark:text-gray-400 flex items-start"
-                                >
-                                  <span className="text-medical-blue mr-2">•</span>
-                                  {rec}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="medications" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <span>Current Medications</span>
-                </CardTitle>
-                <CardDescription>Track your medications for food interaction checking</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {medications.map((med, index) => (
-                  <div key={index} className="p-4 border rounded-lg space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-medium text-lg">{med.name}</h3>
-                        <p className="text-sm text-gray-600">
-                          {med.dosage} - {med.frequency}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="border-medical-blue text-medical-blue">
-                        Active
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Timing:</span>
-                        <p className="font-medium">{med.timing}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Next Dose:</span>
-                        <p className="font-medium">In 4 hours</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <p className="text-sm text-gray-600">Diagnosed: {condition.diagnosed_year}</p>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                ) : (
+                  <p className="text-sm text-gray-500">No medical conditions recorded</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

@@ -13,6 +13,7 @@ interface AuthContextType {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  userProfile: any
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -34,16 +36,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           setIsAuthenticated(true)
           setUser(session.user)
-          if (pathname === "/" || pathname === "/auth" || pathname === "/onboarding") {
-            router.push("/dashboard")
+
+          try {
+            const response = await fetch("/api/user-profile")
+            if (response.ok) {
+              const profile = await response.json()
+              setUserProfile(profile)
+
+              // If profile exists with age/gender, user completed onboarding
+              if (profile?.age && profile?.gender) {
+                if (pathname === "/" || pathname === "/auth") {
+                  router.push("/dashboard")
+                }
+              } else {
+                // New user, redirect to onboarding
+                if (
+                  pathname === "/" ||
+                  pathname === "/dashboard" ||
+                  pathname === "/profile" ||
+                  pathname === "/settings"
+                ) {
+                  router.push("/onboarding")
+                }
+              }
+            } else {
+              // No profile found, new user
+              if (
+                pathname === "/" ||
+                pathname === "/dashboard" ||
+                pathname === "/profile" ||
+                pathname === "/settings"
+              ) {
+                router.push("/onboarding")
+              }
+            }
+          } catch (err) {
+            console.error("Profile fetch error:", err)
           }
         } else {
           setIsAuthenticated(false)
           setUser(null)
+          setUserProfile(null)
           if (
             pathname.startsWith("/dashboard") ||
             pathname.startsWith("/profile") ||
-            pathname.startsWith("/settings")
+            pathname.startsWith("/settings") ||
+            pathname.startsWith("/onboarding")
           ) {
             router.push("/auth")
           }
@@ -66,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setIsAuthenticated(false)
         setUser(null)
+        setUserProfile(null)
       }
     })
 
@@ -88,10 +127,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
     setIsAuthenticated(false)
     setUser(null)
+    setUserProfile(null)
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, loading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ isAuthenticated, user, loading, login, logout, userProfile }}>
+      {children}
+    </AuthContext.Provider>
   )
 }
 

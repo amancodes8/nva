@@ -13,6 +13,7 @@ import { ArrowLeft, ArrowRight, User, Heart, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/components/auth-provider"
+import { supabase } from "@/lib/supabase"
 
 const MEDICAL_CONDITIONS = [
   "Diabetes Type 1",
@@ -73,18 +74,49 @@ export function HealthOnboarding() {
         body: JSON.stringify({
           age: Number.parseInt(formData.age),
           gender: formData.gender,
-          activityLevel: formData.activityLevel,
-          medicalConditions: formData.medicalConditions,
-          dietaryRestrictions: formData.dietaryRestrictions,
-          allergies: formData.allergies,
+          activity_level: formData.activityLevel,
           userId: user?.id,
         }),
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
+        const data = await response.json()
         throw new Error(data.error || "Failed to save profile")
+      }
+
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser()
+
+      if (supabaseUser) {
+        for (const condition of formData.medicalConditions) {
+          if (condition !== "None of the above") {
+            await supabase.from("medical_conditions").insert({
+              user_id: supabaseUser.id,
+              condition_name: condition,
+              severity: "Moderate",
+              diagnosed_year: new Date().getFullYear(),
+            })
+          }
+        }
+
+        for (const restriction of formData.dietaryRestrictions) {
+          if (restriction !== "None") {
+            await supabase.from("dietary_restrictions").insert({
+              user_id: supabaseUser.id,
+              restriction: restriction,
+            })
+          }
+        }
+
+        if (formData.allergies) {
+          await supabase.from("food_allergies").insert({
+            user_id: supabaseUser.id,
+            allergen: formData.allergies,
+            severity: "Moderate",
+            reaction_description: formData.allergies,
+          })
+        }
       }
 
       toast({
