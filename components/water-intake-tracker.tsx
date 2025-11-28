@@ -80,6 +80,7 @@ export function WaterIntakeTracker({ userId, initialGlasses = 0, goal = 8 }: Wat
       }
     };
     load();
+
     
     const saved = window.localStorage.getItem(STREAK_KEY);
     if (saved) {
@@ -273,6 +274,7 @@ export function WaterIntakeTracker({ userId, initialGlasses = 0, goal = 8 }: Wat
             </AnimatePresence>
           </motion.div>
         </div>
+
         
         {/* Fixed text overflow issue with better spacing and truncation */}
         <div className="mt-3 text-center w-full px-2">
